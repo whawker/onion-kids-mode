@@ -630,6 +630,12 @@ unused_kid_name() {
 
 set_active_kid() {
     mkdir -p "$backupdir"
+    # last_game.txt is shared, so auto-resume would drop the child taking
+    # over straight into the game the previous one was playing. Whose turn
+    # it is has changed; where to pick up has not carried over.
+    if [ "$(sed -n 1p "$active_kid_file" 2> /dev/null)" != "$1" ]; then
+        rm -f "$last_game_file"
+    fi
     printf '%s\n' "$1" > "$active_kid_file"
     sync
 }
@@ -700,8 +706,11 @@ apply_profile_isolation() {
     fi
 }
 
+# $1 (optional) = the profile to put the saves back into. Only the
+# mid-session hand-over passes it, because by then the session pointer
+# already names the child taking over rather than the one finishing.
 restore_profile_isolation() {
-    kids_profile="$(restore_target_profile)"
+    kids_profile="${1:-$(restore_target_profile)}"
     mkdir -p "$kids_profile"
     for d in $isolated_subdirs; do
         rm -rf "$kids_profile/$d"
@@ -1455,6 +1464,42 @@ change_pin() {
     done
 }
 
+# ------------------------------ switch child -------------------------------
+# Hand the device to a sibling without leaving the launcher. Reaching the
+# parent menu already means no game is running — kidui has to exit to report
+# the PIN, and running a game is a different branch of the loop entirely —
+# so the profile folders are as idle here as they are at arm time, and the
+# hand-over is the same pair of directory renames arming does.
+#
+# The picker runs FIRST, before anything moves: a parent who backs out of it
+# leaves the session exactly as it was, with no window where the saves are
+# half-swapped. Returns 0 if a switch happened, 1 if not.
+
+switch_kid() {
+    _sk_from_profile="$(active_kids_profile)"
+    _sk_from="$(sed -n 1p "$active_kid_file" 2> /dev/null)"
+
+    pick_session_kid || {
+        # Canceled or kidui failed: put the pointer back and change nothing
+        printf '%s\n' "$_sk_from" > "$active_kid_file"
+        return 1
+    }
+
+    if [ "$(active_kids_profile)" = "$_sk_from_profile" ]; then
+        log "Hand-over canceled: same child chosen."
+        return 1
+    fi
+
+    # A fresh face gets a fresh budget — inheriting whatever the last child
+    # had left is a surprise nobody asked for
+    pick_session_timer || log "Hand-over: timer picker failed; keeping the current budget."
+
+    restore_profile_isolation "$_sk_from_profile"
+    apply_profile_isolation
+    log "Handed over to $(get_active_kid)."
+    return 0
+}
+
 # ------------------------------- add a child -------------------------------
 # Reached from the parent menu. Creates the child's profile and nothing
 # else: the menu runs mid-session, when the playing child's saves are live
@@ -1520,9 +1565,9 @@ add_kid() {
     fi
 
     if [ -n "$_ak_first" ]; then
-        infoPanel -t "Kids Mode" -m "$_ak_first and $_ak_new are set up.\nUnlock and arm again to\nchoose who plays." --auto
+        infoPanel -t "Kids Mode" -m "$_ak_first and $_ak_new are set up.\nUse Switch child to choose\nwho plays next." --auto
     else
-        infoPanel -t "Kids Mode" -m "$_ak_new added.\nUnlock and arm again to\nplay as $_ak_new." --auto
+        infoPanel -t "Kids Mode" -m "$_ak_new added.\nUse Switch child to hand\nover to $_ak_new." --auto
     fi
 }
 
@@ -1538,10 +1583,19 @@ parent_menu() {
         rm -f "$uiresult" "$autoresume_result" "$brightness_result"
         ar_val=0
         [ "$(config_get auto_resume_last_game)" = "true" ] && ar_val=1
+        # The roster only tells kidui whether "Switch child" has anywhere
+        # to go; the menu never reads the save layout itself.
+        set --
+        while IFS= read -r _pm_kid; do
+            [ -n "$_pm_kid" ] || continue
+            set -- "$@" --kid "$_pm_kid"
+        done <<EOF
+$(kid_roster)
+EOF
         "$kidui_bin" --parent-menu \
             --remaining "$(timer_remaining)" \
             --brightness "$(get_brightness_pct)" \
-            --autoresume "$ar_val" > "$uilog" 2>&1
+            --autoresume "$ar_val" "$@" > "$uilog" 2>&1
         menu_rc=$?
 
         # The toggle is written the instant the parent flips it (not
@@ -1605,6 +1659,13 @@ parent_menu() {
             CHANGEPIN)
                 change_pin
                 # Stay in the menu regardless of outcome
+                ;;
+            SWITCHKID)
+                # Switched: straight back to the launcher for the new child.
+                # Canceled: back to the menu the parent was standing in.
+                if switch_kid; then
+                    return 1
+                fi
                 ;;
             ADDKID)
                 add_kid

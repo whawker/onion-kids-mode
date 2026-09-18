@@ -355,6 +355,52 @@ test_name_validation() {
     assert_equals "$(kid_count)" "1" "only the usable name is on the roster"
 }
 
+# Handing the device to a sibling from the parent menu, without leaving the
+# launcher. This is the sequence switch_kid performs once the picker has
+# answered: the finishing child's saves go back to THEIR folder, named
+# explicitly, because the session pointer already names the child taking
+# over.
+test_handover_between_children() {
+    seed_kid_profile "${kids_profile_prefix}Joe" "joe"
+    mkdir -p "${kids_profile_prefix}Rosie"
+    set_active_kid "Joe"
+    step apply_profile_isolation
+    play_as joe2
+
+    handing_over_from="$(active_kids_profile)"
+    set_active_kid "Rosie" # the picker answered
+    step restore_profile_isolation "$handing_over_from"
+    step apply_profile_isolation
+
+    # Joe keeps everything, including what he did this session
+    assert_file "${kids_profile_prefix}Joe/saves/joe.srm" "joe-save"
+    assert_file "${kids_profile_prefix}Joe/saves/joe2.srm" "joe2-save"
+    # Rosie starts clean and cannot see Joe's progress
+    assert_absent "$saves_dir/CurrentProfile/saves/joe.srm"
+    assert_absent "$saves_dir/CurrentProfile/saves/joe2.srm"
+    # The parent's saves stayed parked throughout — they were never in play
+    assert_file "$backupdir/profile-parked-saves/parent.srm" "parent-save"
+
+    play_as rosie
+    step restore_profile_isolation
+    assert_file "${kids_profile_prefix}Rosie/saves/rosie.srm" "rosie-save"
+    assert_file "$saves_dir/CurrentProfile/saves/parent.srm" "parent-save"
+    assert_absent "${kids_profile_prefix}Joe/saves/rosie.srm"
+}
+
+# Auto-resume's "last game" is shared, so it must not survive a change of
+# child — otherwise the sibling taking over is dropped into the game the
+# last one was playing.
+test_changing_child_clears_the_last_game() {
+    mkdir -p "$backupdir"
+    set_active_kid "Joe"
+    seed "$last_game_file" "joes-game"
+    set_active_kid "Joe" # same child again: nothing to forget
+    assert_file "$last_game_file" "joes-game"
+    set_active_kid "Rosie"
+    assert_absent "$last_game_file"
+}
+
 # With exactly one child there is no picker: the acceptance criterion that
 # existing setups see no new screens.
 test_single_child_skips_the_picker() {
@@ -378,6 +424,8 @@ run_test test_stranded_unnamed_profile_is_adopted
 run_test test_empty_unnamed_profile_is_tidied
 run_test test_unreadable_pointer_parks_rather_than_guesses
 run_test test_name_validation
+run_test test_handover_between_children
+run_test test_changing_child_clears_the_last_game
 run_test test_single_child_skips_the_picker
 
 printf '\n%s tests, %s failed\n' "$tests_run" "$tests_failed"

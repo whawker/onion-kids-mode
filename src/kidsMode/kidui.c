@@ -20,6 +20,7 @@
 //            "TIMER" \n <minutes>               (--pick-timer mode)
 //            "MENU" \n "CHANGEPIN"               (set a new PIN)
 //            "MENU" \n "ADDKID"                  (add a child)
+//            "MENU" \n "SWITCHKID"               (hand over to another child)
 //            "KID" \n <name>                    (--pick-kid mode)
 //            "KEYBOARD" \n <text>               (--keyboard mode)
 //   exit 7:  "POWEROFF"  (Time's up screen sat idle for 5 minutes)
@@ -44,11 +45,14 @@
 //   kidui --set-pin -t "..." [--notice "..."]
 //                                  PIN entry only (for initial PIN setup)
 //   kidui --parent-menu --remaining S [--brightness P] [--autoresume 0|1]
+//                      [--kid "Joe" --kid "Rosie"]
 //                                  post-PIN parent menu (S = seconds left,
 //                                  -1 = timer off). "Add play time" is an
 //                                  Onion-style value selector: LEFT/RIGHT
 //                                  picks 5-120 min, A/START applies, and the
 //                                  info line previews the new remaining time.
+//                                  The --kid roster is only used to decide
+//                                  whether "Switch child" has anywhere to go.
 //   kidui --pick-timer [--no-off] -t "..."
 //                                  minutes picker; with --no-off B cancels
 //                                  (exit 1) instead of choosing 0
@@ -128,12 +132,13 @@ typedef enum { SCREEN_CAROUSEL,
 #define MENU_UNLOCK 0
 #define MENU_ADDTIME 1
 #define MENU_NOTIMER 2
-#define MENU_BRIGHTNESS 3
-#define MENU_AUTORESUME 4
-#define MENU_CHANGEPIN 5
-#define MENU_ADDKID 6
-#define MENU_BACK 7
-#define MENU_ROWS 8
+#define MENU_SWITCHKID 3
+#define MENU_BRIGHTNESS 4
+#define MENU_AUTORESUME 5
+#define MENU_CHANGEPIN 6
+#define MENU_ADDKID 7
+#define MENU_BACK 8
+#define MENU_ROWS 9
 #define TIMER_STEP 5
 #define TIMER_MAX 120
 // Brightness is picked in 10% steps and never goes fully dark (min 10%).
@@ -1140,6 +1145,11 @@ int main(int argc, char *argv[])
     list_addItem(&menu_list, (ListItem){.label = "Turn off timer",
                                         .item_type = ACTION,
                                         .disabled = menu_remaining < 0});
+    // Hand the device to a sibling without going back out to Onion. Faded
+    // with fewer than two children, where there is nobody to switch to.
+    list_addItem(&menu_list, (ListItem){.label = "Switch child",
+                                        .item_type = ACTION,
+                                        .disabled = kids_count < 2});
     list_addItem(&menu_list,
                  (ListItem){.label = "Brightness",
                             .item_type = MULTIVALUE,
@@ -1425,6 +1435,11 @@ int main(int argc, char *argv[])
                     }
                     else if (menu_list.active_pos == MENU_CHANGEPIN) {
                         writeResult("MENU", "CHANGEPIN", NULL);
+                        exit_code = 5;
+                        quit = true;
+                    }
+                    else if (menu_list.active_pos == MENU_SWITCHKID) {
+                        writeResult("MENU", "SWITCHKID", NULL);
                         exit_code = 5;
                         quit = true;
                     }
