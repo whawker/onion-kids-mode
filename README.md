@@ -100,8 +100,9 @@ welcome.
    | everything else | does nothing — no dead ends |
 
 5. **Parent access:** hold **SELECT+START ~3 s**, enter the PIN →
-   *Exit Kids Mode / Add play time / Turn off timer / Switch child /
-   Brightness / Auto-resume last game / Change PIN / Add child / Back*.
+   *Exit Kids Mode / Add play time / Turn off timer / Switch to another
+   kid / Add another kid / Brightness / Auto-resume last game /
+   Change PIN / Back*.
    - **Add play time:** **◀ ▶** picks the amount (the header shows what the
      remaining time becomes), **A**/**START** applies — you drop straight
      back into the kid launcher.
@@ -128,14 +129,16 @@ Each child gets their own `Saves/KidsProfile.<name>` folder holding their
 no list to keep in step with them, so you can add or remove a child from a
 computer by making or deleting a folder, and an app update can't lose them.
 
-- **Handing over to a sibling:** parent menu → **Switch child**, pick the
+- **Handing over to a sibling:** parent menu → **Switch to another
+  kid**, pick the
   name, pick a session time. The child finishing keeps everything they did,
   the one taking over starts on their own saves, and you never leave the
   launcher or see Onion's menus. The new session gets a fresh play timer
   rather than inheriting whatever was left of the last one.
-- **Add a child:** parent menu → **Add child**, and type the name on
+- **Add a child:** parent menu → **Add another kid**, and type the name on
   Onion's usual on-screen keyboard. It creates the profile only — the
-  session that's running keeps its own saves, so use **Switch child** when
+  session that's running keeps its own saves, so use **Switch to another
+  kid** when
   it's actually their turn.
 - **The first time you add a second child**, Kids Mode asks for that
   child's name and then for the name of the child already playing — until
@@ -148,7 +151,8 @@ computer by making or deleting a folder, and an app update can't lose them.
   last, so the usual answer is one press of **A**. It appears when arming
   and when switching, and only when there are two or more children.
 - **Favorites are shared.** Every child sees the same game list; it's the
-  saves, save states and thumbnails that are separate.
+  saves, save states, thumbnails and last-played game that are separate —
+  each child's carousel opens where they left off.
 - **Renaming a child:** rename the `Saves/KidsProfile.<name>` folder from a
   computer. **Removing one:** delete the folder — that deletes their saves
   too, so copy it somewhere first if you might want it back.

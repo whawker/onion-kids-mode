@@ -388,17 +388,52 @@ test_handover_between_children() {
     assert_absent "${kids_profile_prefix}Joe/saves/rosie.srm"
 }
 
-# Auto-resume's "last game" is shared, so it must not survive a change of
-# child — otherwise the sibling taking over is dropped into the game the
-# last one was playing.
-test_changing_child_clears_the_last_game() {
-    mkdir -p "$backupdir"
+# The carousel's opening game belongs to the child, not to the device, so
+# it lives in their profile. Joe coming back to his own game matters as
+# much as Lily not being dropped into it.
+test_last_game_is_per_child() {
+    mkdir -p "${kids_profile_prefix}Joe" "${kids_profile_prefix}Lily"
     set_active_kid "Joe"
-    seed "$last_game_file" "joes-game"
-    set_active_kid "Joe" # same child again: nothing to forget
-    assert_file "$last_game_file" "joes-game"
-    set_active_kid "Rosie"
-    assert_absent "$last_game_file"
+    seed "$(last_game_file)" "joes-game"
+    assert_file "${kids_profile_prefix}Joe/last_game.txt" "joes-game"
+
+    set_active_kid "Lily"
+    assert_absent "$(last_game_file)"
+    seed "$(last_game_file)" "lilys-game"
+
+    set_active_kid "Joe"
+    assert_file "$(last_game_file)" "joes-game"
+    assert_file "${kids_profile_prefix}Lily/last_game.txt" "lilys-game"
+}
+
+# It also has to survive the session it was written in: the isolation moves
+# three subfolders, and this sits at the profile root beside them.
+test_last_game_survives_a_session() {
+    mkdir -p "${kids_profile_prefix}Joe"
+    set_active_kid "Joe"
+    seed "$(last_game_file)" "joes-game"
+    step apply_profile_isolation
+    assert_file "$(last_game_file)" "joes-game"
+    step restore_profile_isolation
+    assert_file "${kids_profile_prefix}Joe/last_game.txt" "joes-game"
+}
+
+# Upgrading from a version that kept one shared last_game.txt: the kid
+# playing now is the only one it can belong to.
+test_shared_last_game_is_migrated() {
+    mkdir -p "$backupdir" "${kids_profile_prefix}Joe"
+    set_active_kid "Joe"
+    seed "$backupdir/last_game.txt" "joes-game"
+
+    step migrate_shared_last_game
+    assert_file "${kids_profile_prefix}Joe/last_game.txt" "joes-game"
+    assert_absent "$backupdir/last_game.txt"
+
+    # A second run has nothing to do, and never overwrites a kid's own
+    seed "$backupdir/last_game.txt" "stale-pointer"
+    migrate_shared_last_game
+    assert_file "${kids_profile_prefix}Joe/last_game.txt" "joes-game"
+    assert_absent "$backupdir/last_game.txt"
 }
 
 # With exactly one child there is no picker: the acceptance criterion that
@@ -425,7 +460,9 @@ run_test test_empty_unnamed_profile_is_tidied
 run_test test_unreadable_pointer_parks_rather_than_guesses
 run_test test_name_validation
 run_test test_handover_between_children
-run_test test_changing_child_clears_the_last_game
+run_test test_last_game_is_per_child
+run_test test_shared_last_game_is_migrated
+run_test test_last_game_survives_a_session
 run_test test_single_child_skips_the_picker
 
 printf '\n%s tests, %s failed\n' "$tests_run" "$tests_failed"
