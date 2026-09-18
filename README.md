@@ -109,7 +109,7 @@ welcome.
      carousel (it falls back to the carousel if that game is gone). The
      flip is saved the moment you make it, so **B** or *Back* both keep it.
    - **Change PIN:** set a new 4-digit PIN on the spot (no computer needed).
-5. **Time's up:** the kid sees a friendly "Time's up!" screen. If the
+6. **Time's up:** the kid sees a friendly "Time's up!" screen. If the
    device is left on there, it powers off by itself after 5 minutes.
 
 Kids Mode stays armed across reboots until you exit it via the PIN.
