@@ -1340,6 +1340,19 @@ recover_interrupted_session() {
     return 0
 }
 
+# kidui gave no usable answer. Its stderr — in $uilog, which lives in /tmp
+# and is gone by the next boot — is the only evidence of why: a library it
+# could not resolve, a theme it could not load, a mode that exited early.
+# Fold the tail of it into the log on the card while it still exists,
+# otherwise a screen that "does nothing" leaves nothing behind to debug.
+log_ui_failure() {
+    log "$1 (kidui exit $2)"
+    [ -f "$uilog" ] || return 0
+    tail -n 8 "$uilog" 2> /dev/null | while IFS= read -r _lf; do
+        [ -n "$_lf" ] && log "  | $_lf"
+    done
+}
+
 # ---------------------------- child picker ---------------------------------
 # Shown at arm, just before the timer picker, when more than one child is on
 # the roster: pick who is playing and their saves become this session's.
@@ -1397,6 +1410,7 @@ EOF
         return 2
     fi
     if [ "$kidpicker_rc" -ne 5 ] || [ "$(sed -n 1p "$uiresult")" != "KID" ]; then
+        log_ui_failure "Child picker returned nothing" "$kidpicker_rc"
         rm -f "$uiresult"
         return 1
     fi
@@ -1430,6 +1444,7 @@ pick_session_timer() {
     # missing libs), and arming on a launcher that won't start would leave
     # the device stuck, so bail out instead.
     if [ "$picker_rc" -ne 5 ] || [ "$(sed -n 1p "$uiresult")" != "TIMER" ]; then
+        log_ui_failure "Timer picker returned nothing" "$picker_rc"
         rm -f "$uiresult"
         return 1
     fi
@@ -1508,9 +1523,22 @@ switch_kid() {
 
 run_keyboard() {
     rm -f "$uiresult"
-    "$kidui_bin" --keyboard -t "$1" > "$uilog" 2>&1
+    # Onion's keyboard loads its key images from a RELATIVE path — RES_BASE
+    # is "res/" in SearchFilter's src/common/resource.hpp, the source the
+    # prebuilt libkbinput.so was built from — so they only resolve when the
+    # working directory is the one holding them, .tmp_update. Anywhere else
+    # the images load as nothing and the first blit segfaults, which is why
+    # this worked when Kids Mode was armed by the boot hook and died when it
+    # was armed from the Apps tab or after a game had run (both leave the
+    # launcher sitting in App/KidsMode). The subshell puts the working
+    # directory back where the loop expects it.
+    (cd "$sysdir" && "$kidui_bin" --keyboard -t "$1") > "$uilog" 2>&1
     _rk=$?
     if [ "$_rk" -ne 5 ] || [ "$(sed -n 1p "$uiresult")" != "KEYBOARD" ]; then
+        # Not necessarily an error — the parent may simply have backed out —
+        # but it is indistinguishable from the keyboard failing to appear,
+        # so it is worth a line either way
+        log_ui_failure "Keyboard entry (\"$1\") returned nothing" "$_rk"
         rm -f "$uiresult"
         return 1
     fi
