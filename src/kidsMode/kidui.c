@@ -570,25 +570,40 @@ static SDL_Surface *restartIcon(void)
         return icon_restart;
     icon_restart_tried = true;
 
-    SDL_Surface *raw = IMG_Load(RESTART_ICON_PATH);
-    if (raw == NULL)
-        return NULL;
-#ifdef PLATFORM_MIYOOMINI
-    // Same loader quirk the box art works around: images come back
-    // 180°-rotated relative to text. scaleSurface also normalises to
-    // 32-bit ARGB, which rotate180InPlace relies on.
-    SDL_Surface *normalized = scaleSurface(raw, raw->w, raw->h);
-    if (normalized != NULL) {
-        SDL_FreeSurface(raw);
-        raw = normalized;
-    }
-    rotate180InPlace(raw);
-#endif
-    icon_restart = SDL_DisplayFormatAlpha(raw);
+    // Loaded the way the theme loads its own A and B hints (theme_loadImage
+    // in common/theme/load.h): straight from IMG_Load, scaled only when the
+    // display is, and nothing else.
+    //
+    // This used to borrow the box-art path instead — rotate 180 degrees,
+    // rescale, SDL_DisplayFormatAlpha — and came out sitting on a solid
+    // block while the theme's A button next to it was transparent. The
+    // rotation was never needed: it compensates for a loader quirk on the
+    // box-art path, and a letter X is symmetrical under 180 degrees, so it
+    // looked right either way and hid the conversion that was costing the
+    // alpha.
+    icon_restart = IMG_Load(RESTART_ICON_PATH);
     if (icon_restart == NULL)
-        icon_restart = raw;
-    else
-        SDL_FreeSurface(raw);
+        return NULL;
+
+    // Sized against the theme's own A button rather than against the
+    // display, so the two hints sit side by side at the same size whatever
+    // theme is active — themes ship these at different sizes, and this one
+    // is deliberately larger than any of them so it scales down, which
+    // stays sharp, rather than up.
+    SDL_Surface *button_a = resource_getSurface(BUTTON_A);
+    int target_h = button_a != NULL ? button_a->h : (int)(32.0 * g_scale);
+    if (target_h > 0 && icon_restart->h > 0 && target_h != icon_restart->h) {
+        SDL_Surface *scaled = scaleSurface(
+            icon_restart, icon_restart->w * target_h / icon_restart->h,
+            target_h);
+        if (scaled != NULL) {
+            SDL_FreeSurface(icon_restart);
+            icon_restart = scaled;
+        }
+    }
+
+    // Belt and braces: whatever the surface came from, blit it blended.
+    SDL_SetAlpha(icon_restart, SDL_SRCALPHA, 255);
     return icon_restart;
 }
 
