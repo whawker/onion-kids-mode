@@ -100,8 +100,9 @@ welcome.
    | everything else | does nothing — no dead ends |
 
 5. **Parent access:** hold **SELECT+START ~3 s**, enter the PIN →
-   *Exit Kids Mode / Add play time / Turn off timer / Switch to another kid /
-   Brightness / Auto-resume last game / Change PIN / Add another kid / Back*.
+   *Exit Kids Mode / Add play time / Turn off timer / Switch to another
+   kid / Add another kid / Brightness / Auto-resume last game /
+   Change PIN / Back*.
    - **Add play time:** **◀ ▶** picks the amount (the header shows what the
      remaining time becomes), **A**/**START** applies — you drop straight
      back into the kid launcher.
@@ -148,7 +149,8 @@ computer by making or deleting a folder, and an app update can't lose them.
   last, so the usual answer is one press of **A**. It appears when arming
   and when switching, and only when there are two or more children.
 - **Favorites are shared.** Every child sees the same game list; it's the
-  saves, save states and thumbnails that are separate.
+  saves, save states, thumbnails and last-played game that are separate —
+  each child's carousel opens where they left off.
 - **Renaming a child:** rename the `Saves/KidsProfile.<name>` folder from a
   computer. **Removing one:** delete the folder — that deletes their saves
   too, so copy it somewhere first if you might want it back.

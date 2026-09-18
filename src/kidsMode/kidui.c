@@ -133,10 +133,10 @@ typedef enum { SCREEN_CAROUSEL,
 #define MENU_ADDTIME 1
 #define MENU_NOTIMER 2
 #define MENU_SWITCHKID 3
-#define MENU_BRIGHTNESS 4
-#define MENU_AUTORESUME 5
-#define MENU_CHANGEPIN 6
-#define MENU_ADDKID 7
+#define MENU_ADDKID 4
+#define MENU_BRIGHTNESS 5
+#define MENU_AUTORESUME 6
+#define MENU_CHANGEPIN 7
 #define MENU_BACK 8
 #define MENU_ROWS 9
 #define TIMER_STEP 5
@@ -1153,11 +1153,18 @@ int main(int argc, char *argv[])
     list_addItem(&menu_list, (ListItem){.label = "Turn off timer",
                                         .item_type = ACTION,
                                         .disabled = menu_remaining < 0});
-    // Hand the device to a sibling without going back out to Onion. Faded
-    // with fewer than two children, where there is nobody to switch to.
-    list_addItem(&menu_list, (ListItem){.label = "Switch to another kid",
-                                        .item_type = ACTION,
-                                        .disabled = kids_count < 2});
+    // Who is playing sits with the other session controls: it is a
+    // hand-over, not a setting. Faded with fewer than two profiles, where
+    // there is nobody to switch to.
+    list_addItem(&menu_list,
+                 (ListItem){.label = "Switch to another kid",
+                            .item_type = ACTION,
+                            .disabled = kids_count < 2});
+    // Creates the profile and nothing else — adding a kid and handing the
+    // device over are separate intentions, and the row above is the one
+    // that ends someone's turn.
+    list_addItem(&menu_list,
+                 (ListItem){.label = "Add another kid", .item_type = ACTION});
     list_addItem(&menu_list,
                  (ListItem){.label = "Brightness",
                             .item_type = MULTIVALUE,
@@ -1166,7 +1173,7 @@ int main(int argc, char *argv[])
                             .value = menu_bright / LEVEL_STEP,
                             .value_formatter = formatBrightness});
     // Skip the carousel on boot and drop straight back into the last game
-    // the kid played. Reported the instant it is flipped (writeAutoResume),
+    // this kid played. Reported the instant it is flipped (writeAutoResume),
     // not on a menu action.
     list_addItem(&menu_list, (ListItem){.label = "Auto-resume last game",
                                         .item_type = MULTIVALUE,
@@ -1176,11 +1183,6 @@ int main(int argc, char *argv[])
                                         .value_formatter = formatOnOff});
     list_addItem(&menu_list,
                  (ListItem){.label = "Change PIN", .item_type = ACTION});
-    // Creates the child's profile and nothing else: switching children
-    // mid-session would mean moving the running child's saves out from
-    // under them, so the new child becomes playable at the next arm.
-    list_addItem(&menu_list,
-                 (ListItem){.label = "Add another kid", .item_type = ACTION});
     list_addItem(&menu_list,
                  (ListItem){.label = "Back", .item_type = ACTION});
 

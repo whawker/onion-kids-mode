@@ -44,7 +44,6 @@ keymapbackup="$backupdir/keymap.json.backup"
 keymapnone="$backupdir/keymap-was-absent"
 blfscript=/mnt/SDCARD/.tmp_update/script/blue_light.sh
 blfbackup="$backupdir/blue_light.sh.backup"
-last_game_file="$backupdir/last_game.txt"
 : "${logfile:=/mnt/SDCARD/.tmp_update/logs/kidmode.log}"
 
 timer_state="$backupdir/timer_state.txt" # 3 lines: day / used seconds / bonus seconds
@@ -630,14 +629,31 @@ unused_kid_name() {
 
 set_active_kid() {
     mkdir -p "$backupdir"
-    # last_game.txt is shared, so auto-resume would drop the child taking
-    # over straight into the game the previous one was playing. Whose turn
-    # it is has changed; where to pick up has not carried over.
-    if [ "$(sed -n 1p "$active_kid_file" 2> /dev/null)" != "$1" ]; then
-        rm -f "$last_game_file"
-    fi
     printf '%s\n' "$1" > "$active_kid_file"
     sync
+}
+
+# Which game the carousel opens on, and what auto-resume picks up, belong to
+# the child whose session it is — so they live in that child's own profile
+# rather than in the shared state beside the timer and the PIN backup. Kept
+# at the profile root, which the isolation never touches: it only ever moves
+# the three subfolders.
+last_game_file() { printf '%s\n' "$(active_kids_profile)/last_game.txt"; }
+
+# Versions before per-kid profiles kept one shared last_game.txt beside the
+# timer state. The only kid it can belong to is whoever is playing now, so
+# move it into their profile rather than drop them at the front of the
+# carousel for a session. Runs once: afterwards there is nothing to move.
+migrate_shared_last_game() {
+    _msl="$backupdir/last_game.txt"
+    [ -f "$_msl" ] || return 0
+    if [ -f "$(last_game_file)" ]; then
+        rm -f "$_msl" # this kid already has their own; the old one is stale
+        return 0
+    fi
+    mkdir -p "$(active_kids_profile)"
+    mv "$_msl" "$(last_game_file)" 2> /dev/null &&
+        log "Moved the last-played game into this kid's own profile."
 }
 
 get_active_kid() {
@@ -1479,6 +1495,35 @@ change_pin() {
     done
 }
 
+# ------------------------------ auto-resume --------------------------------
+# Opt in with "auto_resume_last_game": true in kidmode.json, or the parent
+# menu row: skip the carousel and go straight back into the last game this
+# kid played, like stock Onion's own auto-resume.
+#
+# The start of a session is the moment this applies — and a hand-over starts
+# a session for the kid taking over, so it applies there too. It used to sit
+# inline before the main loop, which meant the same setting sent the kid who
+# armed into their game and left the kid arriving mid-session on the
+# carousel.
+
+auto_resume_if_set() {
+    [ "$(config_get auto_resume_last_game)" = "true" ] || return 1
+    [ -f "$(last_game_file)" ] || return 1
+    [ "$(timer_remaining)" != "0" ] || return 1
+
+    lg_launch="$(sed -n 1p "$(last_game_file)")"
+    lg_rompath="$(sed -n 2p "$(last_game_file)")"
+    if [ -z "$lg_launch" ] || [ ! -f "$lg_launch" ] || [ ! -f "$lg_rompath" ]; then
+        log "auto_resume_last_game set but last game no longer exists; showing carousel."
+        rm -f "$(last_game_file)"
+        return 1
+    fi
+
+    log "auto-resuming last game: $lg_rompath"
+    build_game_cmd "$lg_launch" "$lg_rompath"
+    run_game_cmd
+}
+
 # ------------------------------ switch child -------------------------------
 # Hand the device to a sibling without leaving the launcher. Reaching the
 # parent menu already means no game is running — kidui has to exit to report
@@ -1512,6 +1557,9 @@ switch_kid() {
     restore_profile_isolation "$_sk_from_profile"
     apply_profile_isolation
     log "Handed over to $(get_active_kid)."
+    # The kid taking over is starting a session, so the setting that skips
+    # the carousel is theirs to inherit too
+    auto_resume_if_set
     return 0
 }
 
@@ -1593,9 +1641,9 @@ add_kid() {
     fi
 
     if [ -n "$_ak_first" ]; then
-        infoPanel -t "Kids Mode" -m "$_ak_first and $_ak_new are set up.\nUse Switch child to choose\nwho plays next." --auto
+        infoPanel -t "Kids Mode" -m "$_ak_first and $_ak_new are set up.\nUse Switch to another\nkid to choose who plays\nnext." --auto
     else
-        infoPanel -t "Kids Mode" -m "$_ak_new added.\nUse Switch child to hand\nover to $_ak_new." --auto
+        infoPanel -t "Kids Mode" -m "$_ak_new added.\nUse Switch to another\nkid to hand over to\n$_ak_new." --auto
     fi
 }
 
@@ -1611,7 +1659,7 @@ parent_menu() {
         rm -f "$uiresult" "$autoresume_result" "$brightness_result"
         ar_val=0
         [ "$(config_get auto_resume_last_game)" = "true" ] && ar_val=1
-        # The roster only tells kidui whether "Switch to another kid" has anywhere
+        # The roster only tells kidui whether the switch row has anywhere
         # to go; the menu never reads the save layout itself.
         set --
         while IFS= read -r _pm_kid; do
@@ -1785,21 +1833,8 @@ cmd_run() {
             log "resuming interrupted game"
             run_game_cmd
         fi
-    elif [ "$(config_get auto_resume_last_game)" = "true" ] &&
-        [ -f "$last_game_file" ] && [ "$(timer_remaining)" != "0" ]; then
-        # Opt in with "auto_resume_last_game": true in kidmode.json: skip
-        # the carousel on boot and go straight back into the last game the
-        # child played, like stock Onion's own auto-resume.
-        lg_launch="$(sed -n 1p "$last_game_file")"
-        lg_rompath="$(sed -n 2p "$last_game_file")"
-        if [ -n "$lg_launch" ] && [ -f "$lg_launch" ] && [ -f "$lg_rompath" ]; then
-            log "auto-resuming last game: $lg_rompath"
-            build_game_cmd "$lg_launch" "$lg_rompath"
-            run_game_cmd
-        else
-            log "auto_resume_last_game set but last game no longer exists; showing carousel."
-            rm -f "$last_game_file"
-        fi
+    else
+        auto_resume_if_set
     fi
 
     while [ -f "$flagfile" ]; do
@@ -1821,7 +1856,7 @@ cmd_run() {
 
         rm -f "$uiresult"
         select_rompath=""
-        [ -f "$last_game_file" ] && select_rompath="$(sed -n 2p "$last_game_file")"
+        [ -f "$(last_game_file)" ] && select_rompath="$(sed -n 2p "$(last_game_file)")"
         if [ "$no_pin_recovery" = "1" ] && [ -n "$pin_notice" ]; then
             "$kidui_bin" -t "Set a new PIN" --start-pin --notice "$pin_notice" > "$uilog" 2>&1
         elif [ "$no_pin_recovery" = "1" ]; then
@@ -1869,7 +1904,7 @@ cmd_run() {
                 # the fresh-start variant) so a future boot can auto-resume
                 # it if auto_resume_last_game is enabled.
                 mkdir -p "$backupdir"
-                printf '%s\n%s\n' "$sel_launch" "$sel_rompath" > "$last_game_file"
+                printf '%s\n%s\n' "$sel_launch" "$sel_rompath" > "$(last_game_file)"
                 run_game_cmd
                 ui_fails=0
                 ;;
@@ -1985,6 +2020,8 @@ cmd_arm() {
         infoPanel -t "Kids Mode" -m "Couldn't start the launcher.\nKids Mode was NOT armed." --auto
         return 1
     fi
+
+    migrate_shared_last_game
 
     # Arming rewrites four files and moves three folders, then flushes once
     # at the end rather than after each step.
