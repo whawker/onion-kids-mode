@@ -1092,8 +1092,16 @@ int main(int argc, char *argv[])
     // libSDL_rotozoom.so already is — both live in Onion's .tmp_update/lib.
     // Nothing else here needs drawing, so the keyboard runs and exits.
     if (keyboard_mode) {
+        // Breadcrumbs either side of the call: libkbinput is resolved
+        // lazily, so a device whose Onion ships a version without
+        // launch_keyboard kills the process here rather than at startup,
+        // and the two lines are what tells that apart from an empty answer.
+        fprintf(stderr, "kidui: keyboard requested\n");
         const char *entered = launch_keyboard(
             "", strlen(pin_title) > 0 ? pin_title : "Enter a name");
+        fprintf(stderr, "kidui: keyboard returned %s\n",
+                entered == NULL ? "(null)" : entered[0] == '\0' ? "(empty)"
+                                                                : "text");
         // Canceled or left empty: no result file, exactly like every other
         // screen that the parent backs out of
         int kb_rc = 1;
