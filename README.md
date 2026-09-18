@@ -269,8 +269,23 @@ docker run --rm -v "$PWD/Onion":/root/workspace aemiii91/miyoomini-toolchain:lat
   /bin/bash -c "source /root/.bashrc; cd src/kidsMode && make"
 ```
 
+The toolchain image is published for `linux/amd64` only, so on an Apple
+Silicon Mac add `--platform linux/amd64` to the `docker run` — without it
+Docker stops with *no matching manifest for linux/arm64/v8*. It builds the
+same ARM binary either way; only the compiler is emulated.
+
 The GitHub workflow in this repo does the same on every push and attaches
 an install zip to tagged releases.
+
+The save-profile logic has tests that run against a fixture rather than a
+card, since the failure modes there cost someone real save data:
+
+```sh
+sh tests/profile_test.sh
+```
+
+CI runs them under busybox `ash`, which is the shell the device actually
+has.
 
 ## Credits & license
 

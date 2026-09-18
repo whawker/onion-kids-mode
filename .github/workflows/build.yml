@@ -2,9 +2,7 @@ name: Build
 
 on:
   push:
-    # multi-child-profiles is temporary: it builds the branch without
-    # needing a PR open. Remove before merging.
-    branches: [main, multi-child-profiles]
+    branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
