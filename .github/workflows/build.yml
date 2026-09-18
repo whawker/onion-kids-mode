@@ -2,7 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    # multi-child-profiles is temporary: it builds the branch without
+    # needing a PR open. Remove before merging.
+    branches: [main, multi-child-profiles]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -35,6 +37,25 @@ jobs:
           make
           file kidui
           cp kidui "$GITHUB_WORKSPACE/App/KidsMode/bin/kidui"
+      # kidui links Onion's on-screen keyboard (libkbinput) for child-name
+      # entry. Kids Mode installs as a standalone app rather than into an
+      # Onion build, so it can't ship or assume Onion's lib directory — it
+      # relies on libkbinput.so being resolved at runtime from the rpath
+      # config.mk bakes in (/mnt/SDCARD/.tmp_update/lib), where Onion's own
+      # root Makefile copies lib/. on install. Assert both, so a toolchain
+      # that static-links it or a dropped rpath fails here rather than as a
+      # launcher that won't start on someone's device.
+      - name: Assert the keyboard resolves at runtime
+        shell: bash
+        run: |
+          source /root/.bashrc
+          cd onion/src/kidsMode
+          dyn=$("${CROSS_COMPILE}readelf" -d kidui)
+          echo "$dyn" | grep -E 'NEEDED|PATH'
+          echo "$dyn" | grep -q 'NEEDED.*libkbinput\.so' || {
+            echo "::error::kidui does not link libkbinput.so dynamically"; exit 1; }
+          echo "$dyn" | grep -Eq '(RPATH|RUNPATH).*/mnt/SDCARD/\.tmp_update/lib' || {
+            echo "::error::kidui has no rpath to Onion's lib directory"; exit 1; }
       # The App folder is also an install path: people clone the repo and copy
       # it straight onto a card. Releases are always built from source, so the
       # committed binary silently went stale — it sat two versions behind for

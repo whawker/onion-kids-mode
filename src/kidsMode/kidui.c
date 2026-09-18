@@ -19,6 +19,7 @@
 //            "MENU" \n "NOTIMER"                (turn the play timer off)
 //            "TIMER" \n <minutes>               (--pick-timer mode)
 //            "MENU" \n "CHANGEPIN"               (set a new PIN)
+//            "KEYBOARD" \n <text>               (--keyboard mode)
 //   exit 7:  "POWEROFF"  (Time's up screen sat idle for 5 minutes)
 //   exit 1:  canceled / error / nothing selected (result file removed)
 //
@@ -49,6 +50,9 @@
 //   kidui --pick-timer [--no-off] -t "..."
 //                                  minutes picker; with --no-off B cancels
 //                                  (exit 1) instead of choosing 0
+//   kidui --keyboard -t "..."      text entry on Onion's own on-screen
+//                                  keyboard; exit 5 + "KEYBOARD" \n <text>,
+//                                  or exit 1 if canceled/left empty
 //
 // Play timer: kid_mode_loop.sh's ticker writes the remaining seconds to
 // /tmp/kidmode_remaining. The carousel shows it as a small chip and flips
@@ -68,6 +72,7 @@
 #include <unistd.h>
 
 #include "components/JsonGameEntry.h"
+#include "components/kbinput_wrapper.h" // launch_keyboard (libkbinput)
 #include "components/list.h"
 #include "system/battery.h"
 #include "system/keymap_sw.h"
@@ -963,6 +968,7 @@ int main(int argc, char *argv[])
     bool set_pin_mode = false;
     bool menu_mode = false;
     bool pick_timer_mode = false;
+    bool keyboard_mode = false;
     bool picker_no_off = false;
     bool start_on_pin = false;
     int menu_timer_minutes = 0;
@@ -980,6 +986,8 @@ int main(int argc, char *argv[])
             menu_mode = true;
         else if (strcmp(argv[i], "--pick-timer") == 0)
             pick_timer_mode = true;
+        else if (strcmp(argv[i], "--keyboard") == 0)
+            keyboard_mode = true;
         else if (strcmp(argv[i], "--no-off") == 0)
             picker_no_off = true;
         else if (strcmp(argv[i], "--start-pin") == 0)
@@ -1025,6 +1033,26 @@ int main(int argc, char *argv[])
     if (!SDL_InitDefault())
         return 1;
     fprintf(stderr, "kidui: sdl ready at %.0f ms\n", nowMs() - t_start);
+
+    // Text entry (child names) runs on the on-screen keyboard MainUI uses
+    // for game search and WiFi passwords, rather than a hand-rolled one, so
+    // the screen matches the rest of the system. libkbinput ships with
+    // Onion in .tmp_update/lib, which is already this binary's rpath.
+    // Nothing else here needs drawing, so the keyboard runs and exits.
+    if (keyboard_mode) {
+        const char *entered = launch_keyboard(
+            "", strlen(pin_title) > 0 ? pin_title : "Enter a name");
+        // Canceled or left empty: no result file, exactly like every other
+        // screen that the parent backs out of
+        int kb_rc = 1;
+        if (entered != NULL && entered[0] != '\0') {
+            writeResult("KEYBOARD", entered, NULL);
+            kb_rc = 5;
+        }
+        TTF_Quit();
+        SDL_Quit();
+        return kb_rc;
+    }
 
     // Theme fonts: header/list/hint come straight from the active theme via
     // resource_getFont; these two are the same families at kid-friendly sizes
